@@ -1,7 +1,7 @@
 @theme {
   /* Main Palette */
   --color-bg-app: #f9fafb;
-  --color-text-primary: #1f2937;
+  --color-text-primary: #1e3a8a;
   --color-sidebar-bg: #111827;
   --menu-active: #2563eb;
 
@@ -43,7 +43,9 @@
   --ui-freeze: var(--color-danger);
 
   /* Shadows */
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --shadow-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --hadow-shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg-bottom: 0 5px 10px -3px rgb(0 0 0 / 0.1);
+
+  --font-poppins: "Poppins", sans-serif;
 }

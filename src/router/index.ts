@@ -1,4 +1,9 @@
-import HomePage from '@/pages/HomePage.vue'
+import EventLoopPage from '@/pages/EventLoopPage.vue'
+import GarbageCollectorPage from '@/pages/GarbageCollectorPage.vue'
+import MainPage from '@/pages/MainPage.vue'
+import ReflowRepaintPage from '@/pages/ReflowRepaintPage.vue'
+import RenderingPage from '@/pages/RenderingPage.vue'
+import ThrottlongDebouncePage from '@/pages/ThrottlongDebouncePage.vue'
 import { createRouter, createWebHistory } from 'vue-router'
 
 const router = createRouter({
@@ -6,17 +11,34 @@ const router = createRouter({
   routes: [
     {
       path: '/',
-      name: 'home',
-      component: HomePage,
+      name: 'main',
+      component: MainPage,
     },
-    // {
-    //   path: '/about',
-    //   name: 'about',
-    //   // route level code-splitting
-    //   // this generates a separate chunk (About.[hash].js) for this route
-    //   // which is lazy-loaded when the route is visited.
-    //   component: () => import('../views/AboutView.vue'),
-    // },
+    {
+      path: '/event-loop',
+      name: 'event-loop',
+      component: EventLoopPage,
+    },
+    {
+      path: '/garbage-collector',
+      name: 'garbage-collector',
+      component: GarbageCollectorPage,
+    },
+    {
+      path: '/throttling-debouncing',
+      name: 'throttling-debouncing',
+      component: ThrottlongDebouncePage,
+    },
+    {
+      path: '/reflow-repaint',
+      name: 'reflow-repaint',
+      component: ReflowRepaintPage,
+    },
+    {
+      path: '/rendering',
+      name: 'rendering',
+      component: RenderingPage,
+    },
   ],
 })
 

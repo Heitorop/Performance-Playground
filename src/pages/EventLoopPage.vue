@@ -4,6 +4,6 @@ import MainLayout from "@/layouts/MainLayout.vue";
 
 <template>
   <MainLayout>
-    <main>dfsdf</main>
+    <p class="font-mono font-bold m-auto">zdfdsf</p>
   </MainLayout>
 </template>
