@@ -27,7 +27,7 @@ function toggleSidebar() {
       <h1 class="max-w-[150px] mb-10 text-xl text-text-primary font-bold">Perfomance Playground</h1>
       <NavBar />
     </sidebar>
-    <main class="flex w-full p-4">
+    <main class="flex flex-col gap-8 w-full py-10 px-12">
       <slot />
     </main>
   </div>

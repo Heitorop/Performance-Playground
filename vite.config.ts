@@ -12,9 +12,16 @@ export default defineConfig({
     vueDevTools(),
     tailwindcss()
   ],
+  define: {
+    global: 'globalThis',
+    'process.env': {}
+  },
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url))
     },
   },
+  optimizeDeps: {
+    include: ['@babel/standalone', '@babel/traverse', '@babel/types']
+  }
 })
