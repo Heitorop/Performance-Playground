@@ -100,7 +100,7 @@ Performance-Playground/
 │   │   ├── MainPage.vue
 │   │   ├── EventLoopPage.vue
 │   │   ├── GarbageCollectorPage.vue
-│   │   ├── ThrottlongDebouncePage.vue
+│   │   ├── ThrottlingDebouncePage.vue
 │   │   ├── ReflowRepaintPage.vue
 │   │   └── RenderingPage.vue
 │   ├── router/          # Vue Router configuration
