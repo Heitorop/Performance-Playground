@@ -6,20 +6,30 @@ import { CodeEditor, type EditorError, type EditorLifecycleHooks } from "monaco-
 import { ref, watch } from "vue";
 import type { editor } from "monaco-editor";
 import * as monaco from "monaco-editor";
-
 import MainLayout from "@/layouts/MainLayout.vue";
 
-const code = ref<string>(`console.log('Start');
+type ExecutionStep = {
+  type: string;
+  name: string;
+  context: string;
+  location: number[] | null;
+  executionOrder: number;
+};
 
-setTimeout(() => { 
-  console.log('Timeout callback'); 
-}, 0);
+const code = ref<string>(`
 
-Promise.resolve().then(() => { 
-  console.log('Promise resolved'); 
+Promise.resolve().then(() => {
+  console.log('Promise resolved');
 });
 
-console.log('End');`);
+console.log('Start');
+
+setTimeout(() => {
+  console.log('Timeout callback');
+}, 0);
+
+console.log('End');
+`);
 
 const editorError = ref<EditorError | null>(null);
 const monacoEditor = ref<editor.IStandaloneCodeEditor | null>(null);
@@ -40,24 +50,23 @@ const handleError = (error: EditorError | null) => {
   }
 };
 
-function highlightLine(lineNumber: number, className = "highlight-execution") {
-  if (!decorationsCollection) return;
+// function highlightLine(lineNumber: number, className = "highlight-execution") {
+//   if (!decorationsCollection) return;
 
-  decorationsCollection.set([
-    {
-      range: new monaco.Range(lineNumber, 1, lineNumber, 1),
-      options: {
-        isWholeLine: true,
-        className,
-        glyphMarginClassName: "highlight-glyph",
-      },
-    },
-  ]);
-  console.log(decorationsCollection);
-}
+//   decorationsCollection.set([
+//     {
+//       range: new monaco.Range(lineNumber, 1, lineNumber, 1),
+//       options: {
+//         isWholeLine: true,
+//         className,
+//         glyphMarginClassName: "highlight-glyph",
+//       },
+//     },
+//   ]);
+// }
 
-function highlightLines(lineNumbers: number[], className = "highlight-execution") {
-  if (!decorationsCollection) return;
+function highlightLines(lineNumbers: number[] | null, className = "highlight-execution") {
+  if (!decorationsCollection || !lineNumbers) return;
 
   decorationsCollection.clear();
 
@@ -78,96 +87,147 @@ function clearHighlights() {
   decorationsCollection.clear();
 }
 
-function simulateExecution() {
-  const executionOrder = [1, 3, 7, 9]; // Line numbers in execution order
-  let currentStep = 0;
-
-  const interval = setInterval(() => {
-    if (currentStep < executionOrder.length) {
-      highlightLine(executionOrder[currentStep]);
-      currentStep++;
-    } else {
-      clearInterval(interval);
-      setTimeout(clearHighlights, 1000); // Clear after 1 second
-    }
-  }, 1000);
-}
 type NodePath<T = t.Node> = {
   node: T;
   parent: t.Node;
   parentPath: NodePath | null;
 };
 
-function parseCode(codeStr: string) {
+function getExecutionContext(path: NodePath): string {
+  let currentPath = path.parentPath;
+  while (currentPath) {
+    const node = currentPath.node;
+
+    if (t.isCallExpression(node)) {
+      const callee = node.callee;
+      if (
+        t.isIdentifier(callee) &&
+        (callee.name === "setTimeout" || callee.name === "setInterval")
+      ) {
+        console.log(t.isCallExpression(node), callee.name);
+
+        return "macrotask-queue";
+      }
+    }
+
+    if (t.isCallExpression(node)) {
+      const callee = node.callee;
+      if (t.isMemberExpression(callee)) {
+        const property = callee.property;
+        if (
+          t.isIdentifier(property) &&
+          (property.name === "then" || property.name === "catch" || property.name === "finally")
+        ) {
+          return "microtask-queue";
+        }
+      }
+    }
+
+    if (
+      t.isFunctionDeclaration(node) ||
+      t.isFunctionExpression(node) ||
+      t.isArrowFunctionExpression(node)
+    ) {
+      if (node.async) {
+        return "async-function";
+      }
+    }
+
+    currentPath = currentPath.parentPath;
+  }
+
+  return "main-thread";
+}
+
+function parseCodeWithContext(codeStr: string) {
   const ast = babelParser.parse(codeStr, {
     sourceType: "module",
     plugins: ["typescript"],
   });
 
-  const result: object[] = [];
+  const result: ExecutionStep[] = [];
 
   traverse(ast, {
     CallExpression(path: NodePath<t.CallExpression>) {
       const callee = path.node.callee;
-      console.log(path.node);
+      const context = getExecutionContext(path);
 
-      if (callee.type === "MemberExpression") {
+      const startLine = path.node.loc?.start.line ? path.node.loc?.start.line : null;
+      const endLine = path.node.loc?.end.line ? path.node.loc?.end.line : null;
+      const location = startLine && endLine ? [startLine, endLine] : null;
+
+      if (t.isMemberExpression(callee)) {
         const objName = callee.object.type === "Identifier" ? callee.object.name : null;
         const propName = callee.property.type === "Identifier" ? callee.property.name : null;
 
         if (objName === "console" && propName === "log") {
           result.push({
-            type: "sync",
+            type: "console-log",
             name: "console.log",
-            location: [callee.loc.start.line, callee.loc.end.line],
+            context: context,
+            location: location,
+            executionOrder: getExecutionOrder(context),
           });
         }
-        if (objName === "setTimeout") {
-          result.push({
-            type: "task",
-            name: "setTimeout",
-            location: [callee.loc.start.line, callee.loc.end.line],
-          });
-        }
-        if (objName === "Promise" && propName === "resolve") {
-          result.push({
-            type: "microtask",
-            name: "Promise.then",
-            location: [callee.loc.start.line, callee.loc.end.line],
-          });
-        }
-      }
-      if (callee.type === "Identifier") {
-        result.push({
-          type: "sync",
-          name: callee.name + "()",
-          location: [callee.loc?.start.line, callee.loc?.end.line],
-        });
       }
     },
   });
 
-  return result;
+  return result.sort((a, b) => a.executionOrder - b.executionOrder);
 }
 
-watch(code, (newCode) => {
-  console.log(parseCode(newCode));
-});
+function getExecutionOrder(context: string): number {
+  switch (context) {
+    case "main-thread":
+      return 1;
+    case "microtask-queue":
+      return 2;
+    case "async-function":
+      return 2;
+    case "macrotask-queue":
+      return 3;
+    default:
+      return 1;
+  }
+}
+
+function getHighlightClass(context: string): string {
+  switch (context) {
+    case "main-thread":
+      return "highlight-main";
+    case "microtask-queue":
+      return "highlight-microtask";
+    case "task-queue":
+      return "highlight-task";
+    case "async-function":
+      return "highlight-async";
+    default:
+      return "highlight-execution";
+  }
+}
+
+async function traceArrayWithContext(arr: ExecutionStep[]): Promise<void> {
+  for (let i = 0; i < arr.length; i++) {
+    const item: ExecutionStep = arr[i];
+    const className = getHighlightClass(item.context);
+
+    highlightLines(item.location, className);
+    await sleep(1500);
+  }
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function traceArray(arr: object[]): Promise<void> {
-  console.log(arr);
-  for (const value in arr) {
-    highlightLines(arr[value].location);
-    console.log(arr[value]);
-    await sleep(1000);
-  }
-
-  // clearHighlights();
+async function simulateEventLoop(): Promise<void> {
+  const parsed = parseCodeWithContext(code.value);
+  await traceArrayWithContext(parsed);
 }
+
+watch(code, (newCode) => {
+  console.log("Parsed with context:", JSON.stringify(parseCodeWithContext(newCode), null, 2));
+});
 </script>
 
 <template>
@@ -191,17 +251,10 @@ async function traceArray(arr: object[]): Promise<void> {
         <!-- Control buttons -->
         <div class="mt-4 flex gap-2">
           <button
-            @click="simulateExecution"
+            @click="simulateEventLoop"
             class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
           >
-            Simulate Execution
-          </button>
-
-          <button
-            @click="traceArray(parseCode(code))"
-            class="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
-          >
-            Highlight Line 1
+            Simulate Event Loop
           </button>
           <button
             @click="clearHighlights"
@@ -210,34 +263,80 @@ async function traceArray(arr: object[]): Promise<void> {
             Clear Highlights
           </button>
         </div>
+
+        <!-- Legend -->
+        <div class="mt-4 text-sm">
+          <div class="flex gap-4">
+            <div class="flex items-center gap-2">
+              <div class="w-4 h-4 bg-blue-300 rounded"></div>
+              <span>Main Thread</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <div class="w-4 h-4 bg-green-300 rounded"></div>
+              <span>Microtasks</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <div class="w-4 h-4 bg-red-300 rounded"></div>
+              <span>Task Queue</span>
+            </div>
+          </div>
+        </div>
       </div>
-      {{ code }}
+
+      <div class="max-w-[400px]">
+        <h3 class="text-lg font-bold mb-2">Parsed Code:</h3>
+        ]
+        <div class="flex gap-5 flex-col">
+          <div>
+            {{
+              parseCodeWithContext(code)
+                .filter((snippet) => snippet.executionOrder === 1)
+                .map((snippet) => ({ type: snippet.type, lines: snippet.location }))
+            }}
+          </div>
+          <div>
+            {{
+              parseCodeWithContext(code)
+                .filter((snippet) => snippet.executionOrder === 2)
+                .map((snippet) => ({ type: snippet.type, lines: snippet.location }))
+            }}
+          </div>
+          <div>
+            {{
+              parseCodeWithContext(code)
+                .filter((snippet) => snippet.executionOrder === 3)
+                .map((snippet) => ({ type: snippet.type, lines: snippet.location }))
+            }}
+          </div>
+        </div>
+      </div>
     </div>
   </MainLayout>
 </template>
 
 <style lang="css">
-.highlight-call {
-  background-color: yellow;
-  border-radius: 3px;
+:deep(.highlight-main) {
+  background-color: rgba(59, 130, 246, 0.3) !important;
 }
 
-/* Monaco editor highlight styles */
-.highlight-execution {
+:deep(.highlight-microtask) {
+  background-color: rgba(34, 197, 94, 0.3) !important;
+}
+
+:deep(.highlight-task) {
+  background-color: rgba(239, 68, 68, 0.3) !important;
+}
+
+:deep(.highlight-async) {
+  background-color: rgba(168, 85, 247, 0.3) !important;
+}
+
+:deep(.highlight-execution) {
   background-color: rgba(255, 255, 0, 0.3) !important;
 }
 
-.highlight-glyph {
+:deep(.highlight-glyph) {
   background-color: #ffeb3b;
   width: 10px !important;
-}
-
-/* Alternative highlight styles */
-:deep(.highlight-error) {
-  background-color: rgba(255, 0, 0, 0.3) !important;
-}
-
-:deep(.highlight-success) {
-  background-color: rgba(0, 255, 0, 0.3) !important;
 }
 </style>
